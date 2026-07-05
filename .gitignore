@@ -1,0 +1,58 @@
+# Build outputs
+dist/
+build/
+*.zip
+GenshinAutoTool.exe
+*.spec.bak
+
+# Bytecode
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+*.iml
+
+# Logs
+logs/
+*.log
+
+# Temp
+temp/
+release/
+
+# Sensitive (credentials)
+config.json
+config_with_accounts.json
+
+# Test/debug images
+uid_*.png
+null.jpg
+
+# Large binaries (100MB+ tesseract)
+tesseract-ocr/
+
+# Nested duplicates
+GenshinAutoTool/
+GenshinAutoTool_v5.*/
+GenshinAutoTool_v5.2/
+GenshinAutoTool_v5.3/
+
+# Build logs
+build_log.txt
+build_out.txt
+build_out2.txt
+build_output.txt
+
+# Automation log
+@AutomationLog.txt
+
+# Runtime config
+scheduler_config.json
+
+# Duplicate assets
+图层 0 拷贝.ico
+图层 0 拷贝.png
+
+# Misc
+.name

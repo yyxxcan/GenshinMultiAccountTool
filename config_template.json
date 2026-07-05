@@ -1,0 +1,28 @@
+{
+  "accounts": [],
+  "last_selected": [],
+  "bettergi": {
+    "exe": "请选择 BetterGI.exe 所在路径",
+    "config": "请选择 BetterGI 的 config.json 所在路径"
+  },
+  "snap_hutao": {
+    "exe": "请选择胡桃工具箱的 exe 所在路径",
+    "app_id": "E8B6E2B3-D2A0-4435-A81D-2A16AAF405C8_k3erpsn8bwzzy!App"
+  },
+  "genshin": {
+    "exe": "请选择 YuanShen.exe 所在路径",
+    "process_name": "YuanShen.exe"
+  },
+  "monitor": {
+    "max_wait_seconds": 7200
+  },
+  "tesseract": {
+    "path": "C:/Program Files/Tesseract-OCR"
+  },
+  "hotkeys": {
+    "stop": "ctrl+shift+q"
+  },
+  "settings": {
+    "auto_minimize": true
+  }
+}
