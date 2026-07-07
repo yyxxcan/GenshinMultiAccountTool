@@ -3543,7 +3543,7 @@ class GenshinAutoToolGUI:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("GenshinAutoTool v5.2")
+        self.root.title("GenshinAutoTool v5.3")
         self.root.geometry("960x600")
         self.root.minsize(700, 500)
         self.root.configure(bg=COLORS["bg"])
@@ -3662,7 +3662,7 @@ class GenshinAutoToolGUI:
         title_lbl.pack(side="left")
 
         version_lbl = tk.Label(self.title_bar,
-                               text=" v5.2 ",
+                               text=" v5.3 ",
                                bg=COLORS["primary_dark"],
                                fg="#A0C8E8",
                                font=("Microsoft YaHei", 9))
@@ -4255,7 +4255,7 @@ class GenshinAutoToolGUI:
 
         self._clear_log()
         self._log("=" * 55)
-        self._log(f"GenshinAutoTool v5.2  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self._log(f"GenshinAutoTool v5.3  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         self._log(f"选中: {', '.join(sel)}")
         self._log("=" * 55)
 
