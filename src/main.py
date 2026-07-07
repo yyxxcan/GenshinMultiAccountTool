@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GenshinAutoTool v5.2 - 原神多账号自动化一条龙 (动态账号版)
+GenshinAutoTool v5.3 - 原神多账号自动化一条龙 (动态账号版)
 ============================================================
 - 天空蓝简约 GUI
 - 动态添加/删除账号，支持胡桃工具箱账号
@@ -56,6 +56,9 @@ LOGS_DIR.mkdir(exist_ok=True)
 # 以下路径不再硬编码，由 discover_xxx 函数从 config.json 的 bettergi.config 动态推导
 # BETTERGI_USER_DIR = os.path.dirname(cfg["bettergi"]["config"])
 # BETTERGI_ONEDRAGON_DIR = os.path.join(BETTERGI_USER_DIR, "OneDragon")
+
+# 全局托盘引用，供 atexit 兜底清理
+_global_tray = None
 
 GLOBAL_CLEANUP_TARGETS = [
     "BetterGI.exe",
@@ -307,7 +310,65 @@ def cleanup_all(log_func):
             ok = False
     if ok:
         log_func("全局清理完成")
+        log_func("刷新系统托盘...")
+        refresh_system_tray()
+        log_func("托盘刷新完成")
     return ok
+
+
+def refresh_system_tray():
+    """清除系统托盘残留图标（已关闭进程的僵尸图标）。
+    通过 SendMessage 发送 WM_MOUSEMOVE 到托盘窗口，不移动物理光标。"""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    WM_MOUSEMOVE = 0x0200
+
+    # 定位托盘图标工具栏
+    hwnd = user32.FindWindowW("Shell_TrayWnd", None)
+    if not hwnd:
+        return
+    hwnd = user32.FindWindowExW(hwnd, 0, "TrayNotifyWnd", None)
+    if not hwnd:
+        return
+    hwnd = user32.FindWindowExW(hwnd, 0, "SysPager", None)
+    if not hwnd:
+        return
+    hwnd = user32.FindWindowExW(hwnd, 0, "ToolbarWindow32", None)
+    if not hwnd:
+        return
+
+    rect = wintypes.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    rw = rect.right - rect.left
+    rh = rect.bottom - rect.top
+
+    # SendMessage WM_MOUSEMOVE 扫过托盘工具栏，触发 Windows 检查图标有效性
+    for x in range(0, rw, 4):
+        lparam = ((rh // 2) << 16) | (x & 0xFFFF)
+        user32.SendMessageW(hwnd, WM_MOUSEMOVE, 0, lparam)
+    # 再反向扫一次确保所有图标都被命中
+    for x in range(rw - 1, -1, -4):
+        lparam = ((rh // 2) << 16) | (x & 0xFFFF)
+        user32.SendMessageW(hwnd, WM_MOUSEMOVE, 0, lparam)
+
+    time.sleep(0.1)
+
+
+def _cleanup_tray_on_exit():
+    """atexit 兜底：程序异常退出时释放托盘对象并清除残留。"""
+    global _global_tray
+    try:
+        if _global_tray is not None:
+            _global_tray.stop()
+            _global_tray = None
+    except Exception:
+        pass
+    try:
+        refresh_system_tray()
+    except Exception:
+        pass
 
 
 def modify_bettergi_config(config_path, target_name):
@@ -424,11 +485,12 @@ def send_esc_to_genshin():
         pass
 
 
-def monitor_bettergi_log(log_date_str, timeout_sec, log_func, stop_event):
+def monitor_bettergi_log(log_date_str, timeout_sec, log_func, stop_event, genshin_proc=None):
     """
     监控 BetterGI 日志，检测「任务结束」和 ESC 阻塞。
     一条龙任务包含多个子任务（邮件→脚本→追踪），每个子任务都会写"任务结束"。
     当检测到「一条龙和配置组任务结束」紧接着「任务结束」时，判定整条龙真正完成。
+    此外，如果 BetterGI 关闭了原神（进程消失），也视为一条龙完成。
     """
     log_dir = _get_bettergi_log_dir()
     log_path = os.path.join(log_dir, f"better-genshin-impact{log_date_str}.log") if log_dir else ""
@@ -475,6 +537,12 @@ def monitor_bettergi_log(log_date_str, timeout_sec, log_func, stop_event):
             esc_cooldown -= 3
 
         if not new:
+            # 无新日志时检测游戏进程是否已退出（BetterGI 可能关闭了游戏）
+            if genshin_proc and not find_proc(genshin_proc):
+                elapsed = int(time.time() - start_t)
+                log_func(f"原神进程已退出，判定一条龙完成 耗时 {elapsed} 秒，10 秒后结束...")
+                time.sleep(10)
+                return True
             continue
 
         # -------- 精确完成判定 --------
@@ -1592,6 +1660,7 @@ class WorkerThread(threading.Thread):
         gi_exe = cfg["bettergi"]["exe"]
         gi_config = cfg["bettergi"]["config"]
         genshin_proc = cfg["genshin"]["process_name"]
+        genshin_proc_name = genshin_proc  # 保存进程名，scheduler 分支可能覆盖 genshin_proc
         sh_exe = cfg["snap_hutao"]["exe"]
         sh_app_id = cfg["snap_hutao"].get("app_id", "")
         timeout = cfg["monitor"].get("max_wait_seconds", 7200)
@@ -1638,12 +1707,12 @@ class WorkerThread(threading.Thread):
 
             if acc_type == "hutao":
                 matched, recognized_uid = self._run_hutao_smart(
-                    acc, gi_exe, gi_config, genshin_proc, sh_exe,
+                    acc, gi_exe, gi_config, genshin_proc_name, sh_exe,
                     sh_app_id, timeout, log_date_str, pending,
                 )
             else:
                 matched, recognized_uid = self._run_direct_smart(
-                    acc, gi_exe, gi_config, genshin_proc, timeout, log_date_str,
+                    acc, gi_exe, gi_config, genshin_proc_name, timeout, log_date_str,
                     is_last=(len(pending) == 0), prev_hutao=(prev_type == "hutao"),
                 )
 
@@ -1703,7 +1772,7 @@ class WorkerThread(threading.Thread):
                 return False, ""
             self.log(f"原神 PID={gs.pid}")
             time.sleep(5)
-            ok = monitor_bettergi_log(log_date_str, timeout, self.log, self.stop_event)
+            ok = monitor_bettergi_log(log_date_str, timeout, self.log, self.stop_event, genshin_proc_name)
             self.log("一条龙完成，30秒后结束游戏...")
             for _ in range(30):
                 if self.stop_event.is_set():
@@ -1823,7 +1892,7 @@ class WorkerThread(threading.Thread):
                             if pid_s2:
                                 self.log(f"BetterGI PID={pid_s2}")
                                 scheduler_ok = monitor_bettergi_log(
-                                    log_date_str, timeout, self.log, self.stop_event)
+                                    log_date_str, timeout, self.log, self.stop_event, genshin_proc_name)
                                 if scheduler_ok:
                                     self.log("调度器+一条龙任务完成")
                                 else:
@@ -1921,7 +1990,7 @@ class WorkerThread(threading.Thread):
                 self.log(f"BetterGI PID={pid_onedragon}")
                 time.sleep(5)
 
-        ok = monitor_bettergi_log(log_date_str, timeout, self.log, self.stop_event)
+        ok = monitor_bettergi_log(log_date_str, timeout, self.log, self.stop_event, genshin_proc)
 
         close_game = acc.get("close_game", True)
         close_bettergi = acc.get("close_bettergi", True)
@@ -2057,7 +2126,7 @@ class WorkerThread(threading.Thread):
             return False, ""
         self.log(f"BetterGI PID={pid}")
 
-        ok = monitor_bettergi_log(log_date_str, timeout, self.log, self.stop_event)
+        ok = monitor_bettergi_log(log_date_str, timeout, self.log, self.stop_event, genshin_proc)
 
         close_game = acc.get("close_game", True)
         close_bettergi = acc.get("close_bettergi", True)
@@ -4152,6 +4221,12 @@ class GenshinAutoToolGUI:
             messagebox.showwarning("提示", "请至少选择一个账号")
             return
 
+        # 检查 BetterGI 路径
+        gi_exe = self.cfg.get("bettergi", {}).get("exe", "")
+        if not gi_exe or not os.path.isfile(gi_exe):
+            messagebox.showwarning("提示", "请先在设置中配置 BetterGI 可执行文件路径")
+            return
+
         # 检查依赖
         if not HAS_GW or not HAS_PA:
             r = messagebox.askyesno("依赖提示",
@@ -4401,8 +4476,16 @@ class GenshinAutoToolGUI:
     def _setup_tray(self):
         """初始化 pystray 托盘图标，并启动后台守护线程"""
         try:
+            # 优先加载 icon.ico，失败则用代码生成的默认图标
+            image = None
             icon_path = _gen_icon()
-            image = Image.open(icon_path) if icon_path and os.path.exists(icon_path) else self._tray_default_image()
+            if icon_path and os.path.exists(icon_path):
+                try:
+                    image = Image.open(icon_path)
+                except Exception:
+                    pass
+            if image is None:
+                image = self._tray_default_image()
 
             menu = pystray.Menu(
                 pystray.MenuItem("显示窗口", self._tray_show, default=True),
@@ -4417,16 +4500,22 @@ class GenshinAutoToolGUI:
                 pystray.MenuItem("设置", self._tray_settings),
                 pystray.MenuItem("退出", self._tray_quit),
             )
-            self.tray = pystray.Icon("genshin_onedragon", image, "原神一条龙 v5.2", menu)
+            self.tray = pystray.Icon("genshin_onedragon", image, "原神一条龙 v5.3", menu)
+            global _global_tray
+            _global_tray = self.tray
             threading.Thread(target=self.tray.run, daemon=True).start()
         except Exception:
             import traceback
             err = traceback.format_exc()
-            log_dir = os.path.dirname(os.path.abspath(__file__))
+            if getattr(sys, 'frozen', False):
+                log_dir = os.path.dirname(sys.executable)
+            else:
+                log_dir = os.path.dirname(os.path.abspath(__file__))
             with open(os.path.join(log_dir, "tray_error.log"), "w", encoding="utf-8") as f:
                 f.write(err)
             messagebox.showerror("托盘初始化失败", err[:500])
             self.tray = None
+            _global_tray = None
 
     @staticmethod
     def _tray_default_image():
@@ -4459,14 +4548,27 @@ class GenshinAutoToolGUI:
         self.root.after(0, self._tray_quit_in_main)
 
     def _tray_quit_in_main(self):
+        """退出程序：先注销托盘图标，再销毁窗口，避免幽灵图标。"""
+        global _global_tray
         self._quitting = True
         self.scheduler_running = False
         self.running = False
         if self.stop_event:
             self.stop_event.set()
-        if self.tray:
-            self.tray.stop()
-        self.root.destroy()
+        try:
+            if self.tray:
+                self.tray.stop()
+        finally:
+            self.tray = None
+            _global_tray = None
+            try:
+                self.root.destroy()
+            finally:
+                # 兜底清除残留
+                try:
+                    refresh_system_tray()
+                except Exception:
+                    pass
 
     def _on_close(self):
         """点 X 关闭 → 缩到托盘，无托盘时直接退出"""
@@ -4564,6 +4666,16 @@ def main():
     except (IOError, OSError):
         messagebox.showwarning("原神一条龙", "程序已在运行中。")
         return
+
+    # 启动时清除上次强杀程序遗留的无效托盘图标
+    try:
+        refresh_system_tray()
+    except Exception:
+        pass
+
+    # 注册退出兜底：确保托盘对象一定被释放
+    import atexit as _atexit
+    _atexit.register(_cleanup_tray_on_exit)
 
     root = tk.Tk()
     root.withdraw()  # 隐藏小窗口，等界面就绪再显示

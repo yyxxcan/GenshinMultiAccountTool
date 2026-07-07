@@ -30,7 +30,17 @@ def main():
 
     # 打包
     print("\n========== 打包 ==========")
-    run([sys.executable, "-m", "PyInstaller", "--onefile", "--noconsole", "--name", EXE_NAME, "--add-data", "icon.ico;.", "--collect-all", "pystray", "main.py"])
+    run([sys.executable, "-m", "PyInstaller", "--onefile", "--noconsole",
+         "--name", EXE_NAME,
+         "--icon", "icon.ico",
+         "--add-data", "icon.ico;.",
+         "--collect-all", "pystray",
+         "--hidden-import", "numpy",
+         "--hidden-import", "PIL._imaging",
+         "--hidden-import", "PIL._tkinter_finder",
+         "--hidden-import", "PIL.Image",
+         "--hidden-import", "PIL.ImageDraw",
+         "main.py"])
 
     exe_src = DIST_DIR / f"{EXE_NAME}.exe"
     if not exe_src.exists():
