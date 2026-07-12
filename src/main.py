@@ -1,7 +1,7 @@
 ﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GenshinMultiAccountTool v5.4 - 原神多账号自动化一条龙 (动态账号版)
+GenshinMultiAccountTool v5.4 - 原神多账号辅助工具 v5.4 (动态账号版)
 ============================================================
 - 天空蓝简约 GUI
 - 动态添加/删除账号，支持胡桃工具箱账号
@@ -3615,11 +3615,11 @@ class SchedulerDialog(tk.Toplevel):
 # ============================================================
 
 class GenshinMultiAccountToolGUI:
-    """原神多账号自动化一条龙 v5.1 - 主界面"""
+    """原神多账号辅助工具 v5.4 - 主界面"""
 
     def __init__(self, root):
         self.root = root
-        self.root.title("原神多账号辅助工具 v5.4")
+        self.root.title("GenshinMultiAccountTool v5.4")
         self.root.geometry("960x600")
         self.root.minsize(700, 500)
         self.root.configure(bg=COLORS["bg"])
@@ -3731,7 +3731,7 @@ class GenshinMultiAccountToolGUI:
         self.title_bar.configure(height=50)
 
         title_lbl = tk.Label(self.title_bar,
-                             text="   原神多账号自动化一条龙",
+                             text="   原神多账号辅助工具 v5.4",
                              bg=COLORS["primary_dark"],
                              fg=COLORS["text_white"],
                              font=("Microsoft YaHei", 14, "bold"))
@@ -4579,7 +4579,7 @@ class GenshinMultiAccountToolGUI:
                 pystray.MenuItem("设置", self._tray_settings),
                 pystray.MenuItem("退出", self._tray_quit),
             )
-            self.tray = pystray.Icon("genshin_onedragon", image, "原神一条龙 v5.3", menu)
+            self.tray = pystray.Icon("genshin_onedragon", image, "GenshinMultiAccountTool v5.4", menu)
             global _global_tray
             _global_tray = self.tray
             threading.Thread(target=self.tray.run, daemon=True).start()
