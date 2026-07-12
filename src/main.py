@@ -3734,7 +3734,7 @@ class GenshinMultiAccountToolGUI:
         self.title_bar.configure(height=50)
 
         title_lbl = tk.Label(self.title_bar,
-                             text="   原神多账号辅助工具 v5.4",
+                             text="   原神多账号辅助工具",
                              bg=COLORS["primary_dark"],
                              fg=COLORS["text_white"],
                              font=("Microsoft YaHei", 14, "bold"))

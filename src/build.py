@@ -8,7 +8,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 DIST_DIR = SCRIPT_DIR / "dist"
 BUILD_DIR = SCRIPT_DIR / "build"
-EXE_NAME = "原神一条龙"
+EXE_NAME = "GenshinMultiAccountTool"
 ARCHIVE_NAME = "GenshinAutoTool"
 PACKAGE_DIR = DIST_DIR / ARCHIVE_NAME
 
