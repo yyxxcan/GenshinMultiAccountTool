@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GenshinAutoTool v5.3 - 原神多账号自动化一条龙 (动态账号版)
+GenshinMultiAccountTool v5.4 - 原神多账号自动化一条龙 (动态账号版)
 ============================================================
 - 天空蓝简约 GUI
 - 动态添加/删除账号，支持胡桃工具箱账号
@@ -10,7 +10,7 @@ GenshinAutoTool v5.3 - 原神多账号自动化一条龙 (动态账号版)
 - 实时日志 + 进度 + 即停即止
 """
 
-import os, sys, json, time, glob, queue, tempfile, threading, subprocess
+import os, sys, json, re, time, glob, queue, tempfile, threading, subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -168,7 +168,7 @@ def save_scheduler_config(cfg):
 
 # ---- 开机自启动 ----
 AUTOSTART_REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-AUTOSTART_VALUE_NAME = "GenshinAutoTool"
+AUTOSTART_VALUE_NAME = "GenshinMultiAccountTool"
 
 
 def _get_autostart_cmd():
@@ -1751,6 +1751,7 @@ class WorkerThread(threading.Thread):
         """直接 BetterGI 启动（大号/小号）。
         先启动 BetterGI 自动登录，验证 UID 正确后再用 -startOneDragon 重启执行一条龙。
         返回 (成功, 识别到的UID或空)。"""
+        genshin_proc_name = genshin_proc  # 保存进程名，scheduler 分支可能覆盖 genshin_proc
         name = acc["name"]
         expected_uid = acc.get("uid", "").strip()
 
@@ -2604,6 +2605,11 @@ class SettingsDialog(tk.Toplevel):
         tk.Checkbutton(inner, text="启动时自动最小化窗口（避免挡住游戏）",
                         variable=self.auto_minimize_var).pack(anchor="w", padx=20, pady=(0, 10))
 
+        # 关闭窗口时最小化到托盘
+        self.minimize_on_close_var = tk.BooleanVar(value=cfg.get("settings", {}).get("minimize_on_close", True))
+        tk.Checkbutton(inner, text="关闭窗口时最小化到系统托盘",
+                        variable=self.minimize_on_close_var).pack(anchor="w", padx=20, pady=(0, 10))
+
         # 任务完成后自动关机
         self.auto_shutdown_var = tk.BooleanVar(value=cfg.get("settings", {}).get("auto_shutdown", False))
         tk.Checkbutton(inner, text="所有任务完成后自动关机（60秒倒计时，可取消）",
@@ -2727,6 +2733,7 @@ class SettingsDialog(tk.Toplevel):
         self.cfg["hotkeys"]["pause"] = self.pause_hotkey_var.get().strip()
         self.cfg.setdefault("settings", {})
         self.cfg["settings"]["auto_minimize"] = self.auto_minimize_var.get()
+        self.cfg["settings"]["minimize_on_close"] = self.minimize_on_close_var.get()
         self.cfg["settings"]["auto_shutdown"] = self.auto_shutdown_var.get()
         self.cfg.setdefault("uid", {})
         self.cfg["uid"]["method"] = self.uid_method_var.get()
@@ -2945,8 +2952,9 @@ class SchedulerDialog(tk.Toplevel):
         self.cfg = load_scheduler_config()
 
         self.title("定时任务管理")
-        self.geometry("640x580")
+        self.minsize(500, 300)
         self.resizable(True, True)
+        self.geometry("650x580")
         self.configure(bg=COLORS["bg"])
         self.transient(parent)
         self.grab_set()
@@ -2970,11 +2978,12 @@ class SchedulerDialog(tk.Toplevel):
                        command=self._toggle_auto_shutdown).pack(
             side="right", padx=(0, 10))
 
-        btn_color = "#52C41A" if not self.gui.scheduler_running else "#E74C3C"
-        btn_text = "启动定时器" if not self.gui.scheduler_running else "停止定时器"
+        all_enabled = all(s.get("enabled", True) for s in self.cfg["schedules"])
+        btn_color = "#E74C3C" if (self.gui.scheduler_running and all_enabled) else "#52C41A"
+        btn_text = "停止定时器" if (self.gui.scheduler_running and all_enabled) else "一键启动全部"
         self.toggle_btn = tk.Button(top_bar, text=btn_text, command=self._toggle,
                                     bg=btn_color, fg="#FFFFFF",
-                                    activebackground="#389E0D" if not self.gui.scheduler_running else "#C0392B",
+                                    activebackground="#C0392B" if (self.gui.scheduler_running and all_enabled) else "#389E0D",
                                     relief="flat", font=("Microsoft YaHei", 9),
                                     padx=14, pady=2, cursor="hand2", bd=0)
         self.toggle_btn.pack(side="right", padx=(0, 6))
@@ -3070,7 +3079,7 @@ class SchedulerDialog(tk.Toplevel):
         self.hour_var = tk.StringVar(value="08")
         ttk.Combobox(t_row, textvariable=self.hour_var, width=3,
                      values=[f"{h:02d}" for h in range(24)],
-                     state="readonly", font=("Microsoft YaHei", 11)).pack(side="left", padx=(8, 0))
+                     state="normal", font=("Microsoft YaHei", 11)).pack(side="left", padx=(8, 0))
         tk.Label(t_row, text="时", bg="#FFFFFF", fg=COLORS["text"],
                  font=("Microsoft YaHei", 9)).pack(side="left")
         tk.Label(t_row, text=":", bg="#FFFFFF", fg=COLORS["text"],
@@ -3078,7 +3087,7 @@ class SchedulerDialog(tk.Toplevel):
         self.minute_var = tk.StringVar(value="00")
         ttk.Combobox(t_row, textvariable=self.minute_var, width=3,
                      values=[f"{m:02d}" for m in range(60)],
-                     state="readonly", font=("Microsoft YaHei", 11)).pack(side="left")
+                     state="normal", font=("Microsoft YaHei", 11)).pack(side="left")
         tk.Label(t_row, text="分", bg="#FFFFFF", fg=COLORS["text"],
                  font=("Microsoft YaHei", 9)).pack(side="left")
 
@@ -3215,21 +3224,25 @@ class SchedulerDialog(tk.Toplevel):
         list_frame.configure(height=200)
         list_frame.pack_propagate(False)
 
-        self.task_canvas = tk.Canvas(list_frame, bg="#FFFFFF", highlightthickness=0)
+        self.task_canvas = tk.Canvas(list_frame, bg="#FFFFFF", highlightthickness=0, width=580)
         self.task_scroll = ttk.Scrollbar(list_frame, orient="vertical",
                                          command=self.task_canvas.yview)
         self.task_canvas.configure(yscrollcommand=self.task_scroll.set)
         self.task_canvas.pack(fill="both", expand=True)
 
         self.task_inner = tk.Frame(self.task_canvas, bg="#FFFFFF")
-        self.task_canvas.create_window((0, 0), window=self.task_inner, anchor="nw")
+        self._task_window_id = self.task_canvas.create_window(
+            (0, 0), window=self.task_inner, anchor="nw")
 
         def _on_task_inner_resize(event):
             self.task_canvas.configure(scrollregion=self.task_canvas.bbox("all"))
             self.after(50, self._update_task_scrollbar)
         self.task_inner.bind("<Configure>", _on_task_inner_resize)
-        self.task_canvas.bind("<Configure>",
-            lambda e: self.after(50, self._update_task_scrollbar))
+
+        def _on_task_canvas_configure(event):
+            self.task_canvas.itemconfig(self._task_window_id, width=event.width)
+            self.after(50, self._update_task_scrollbar)
+        self.task_canvas.bind("<Configure>", _on_task_canvas_configure)
 
         def _task_mousewheel(event):
             if not self.task_canvas.winfo_exists():
@@ -3238,6 +3251,11 @@ class SchedulerDialog(tk.Toplevel):
             if bbox and bbox[3] > self.task_canvas.winfo_height():
                 self.task_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         self.task_canvas.bind("<MouseWheel>", _task_mousewheel)
+        self.task_inner.bind("<MouseWheel>", _task_mousewheel)
+
+        def _on_canvas_enter(event):
+            self.task_canvas.focus_set()
+        self.task_canvas.bind("<Enter>", _on_canvas_enter)
 
         self._task_vars = []
         self._load_list()
@@ -3390,16 +3408,61 @@ class SchedulerDialog(tk.Toplevel):
             self.after(50, self._update_main_scrollbar)
             return
 
-        for s in self.cfg["schedules"]:
+        for i, s in enumerate(self.cfg["schedules"]):
             var = tk.BooleanVar(value=False)
             self._task_vars.append(var)
             row = tk.Frame(self.task_inner, bg="#FFFFFF")
             row.pack(fill="x", pady=1)
-            cb = tk.Checkbutton(row, text="", variable=var, bg="#FFFFFF")
-            cb.pack(side="left", padx=(6, 4))
-            tk.Label(row, text=self._format_schedule_desc(s), bg="#FFFFFF",
-                     fg=COLORS["text"], font=("Microsoft YaHei", 10),
-                     anchor="w").pack(side="left", fill="x", padx=(0, 4))
+            row.grid_columnconfigure(1, weight=1)
+
+            cb = tk.Checkbutton(row, variable=var, bg="#FFFFFF",
+                                activebackground="#FFFFFF")
+            cb.grid(row=0, column=0, padx=(6, 4), sticky="w")
+
+            desc_label = tk.Label(row, text=self._format_schedule_desc(s), anchor="w",
+                                  bg="#FFFFFF", fg=COLORS["text"],
+                                  font=("Microsoft YaHei", 10))
+            desc_label.grid(row=0, column=1, padx=(4, 8), sticky="w")
+
+            # 启停开关按钮（行尾，固定宽度容器确保对齐）
+            idx = i  # capture for closure
+            enabled = s.get("enabled", True)
+            btn_text = "停用" if enabled else "启用"
+            btn_color = "#E74C3C" if enabled else "#52C41A"
+            btn_active = "#C0392B" if enabled else "#389E0D"
+
+            def make_toggle_callback(idx=idx):
+                def toggle_enabled():
+                    new_state = not self.cfg["schedules"][idx].get("enabled", True)
+                    self.cfg["schedules"][idx]["enabled"] = new_state
+                    save_scheduler_config(self.cfg)
+                    # 手动启用单个任务时，若线程未运行则自动启动
+                    if new_state and not self.gui.scheduler_running:
+                        self.gui.scheduler_running = True
+                        self.gui.scheduler_thread = threading.Thread(
+                            target=self.gui._scheduler_loop, daemon=True)
+                        self.gui.scheduler_thread.start()
+                        self.gui._log("定时器已启动（任务被手动启用）")
+                    # 所有任务都停用后自动停止线程
+                    if not new_state:
+                        all_disabled = all(not sch.get("enabled", True)
+                                           for sch in self.cfg["schedules"])
+                        if all_disabled:
+                            self.gui.scheduler_running = False
+                            self.gui._log("定时器已停止（所有任务均已停用）")
+                    self._load_list()
+                    self._update_status()
+                    self.refresh_btn()
+                    if self.gui.tray:
+                        self.gui._rebuild_tray_menu()
+                return toggle_enabled
+
+            btn = tk.Button(row, text=btn_text, command=make_toggle_callback(),
+                            bg=btn_color, fg="#FFFFFF",
+                            activebackground=btn_active,
+                            relief="flat", font=("Microsoft YaHei", 9),
+                            width=5, cursor="hand2", bd=0)
+            btn.grid(row=0, column=2, padx=(0, 2), sticky="ne")
         self.after(50, self._update_task_scrollbar)
         self.after(50, self._update_main_scrollbar)
 
@@ -3411,10 +3474,10 @@ class SchedulerDialog(tk.Toplevel):
 
         hour = self.hour_var.get().zfill(2)
         minute = self.minute_var.get().zfill(2)
-        try:
-            int(hour), int(minute)
-        except ValueError:
-            messagebox.showerror("错误", "时间格式不正确", parent=self)
+        if not (re.match(r"^\d{2}$", hour) and 0 <= int(hour) <= 23 and
+                re.match(r"^\d{2}$", minute) and 0 <= int(minute) <= 59):
+            messagebox.showwarning("提示",
+                "时间格式错误，请输入 00-23 的小时和 00-59 的分钟", parent=self)
             return
 
         mode = self.mode_var.get()
@@ -3423,6 +3486,7 @@ class SchedulerDialog(tk.Toplevel):
             "time": f"{hour}:{minute}",
             "accounts": selected,
             "scheduler_groups": self.scheduler_var.get().strip(),
+            "enabled": True,
         }
 
         if mode == "once":
@@ -3486,22 +3550,32 @@ class SchedulerDialog(tk.Toplevel):
             v.set(new_val)
 
     def _toggle(self):
-        if not self.gui.scheduler_running:
+        all_enabled = all(s.get("enabled", True) for s in self.cfg["schedules"])
+        if not self.gui.scheduler_running or not all_enabled:
             if not self.cfg["schedules"]:
                 messagebox.showwarning("警告", "没有设置任何定时任务", parent=self)
                 return
+            # 一键启用全部任务
+            for s in self.cfg["schedules"]:
+                s["enabled"] = True
+            save_scheduler_config(self.cfg)
             self.gui.scheduler_running = True
             self.gui.scheduler_thread = threading.Thread(target=self.gui._scheduler_loop, daemon=True)
             self.gui.scheduler_thread.start()
             self.toggle_btn.config(text="停止定时器", bg="#E74C3C", activebackground="#C0392B")
-            self.gui._log("定时器已启动")
+            self.gui._log("定时器已启动（一键启用全部任务）")
+            self._load_list()
             # 缩到托盘，不在任务栏显示
             if self.cfg.get("settings", {}).get("auto_minimize", True):
                 self.gui.root.after(300, self.gui._minimize_to_tray)
+            if self.gui.tray:
+                self.gui._rebuild_tray_menu()
         else:
             self.gui.scheduler_running = False
-            self.toggle_btn.config(text="启动定时器", bg="#52C41A", activebackground="#389E0D")
+            self.toggle_btn.config(text="一键启动全部", bg="#52C41A", activebackground="#389E0D")
             self.gui._log("定时器已停止")
+            if self.gui.tray:
+                self.gui._rebuild_tray_menu()
         self._update_status()
 
     def _toggle_autostart(self):
@@ -3520,30 +3594,32 @@ class SchedulerDialog(tk.Toplevel):
         self.status_var.set(f"已{status}自动关机")
 
     def _update_status(self):
+        total = len(self.cfg["schedules"])
+        enabled = sum(1 for s in self.cfg["schedules"] if s.get("enabled", True))
         if self.gui.scheduler_running:
-            self.status_var.set("定时器运行中")
+            self.status_var.set(f"运行中 | {enabled}/{total} 个任务已启用")
         else:
-            n = len(self.cfg["schedules"])
-            self.status_var.set(f"已设置 {n} 个任务" if n else "暂无任务")
+            self.status_var.set(f"已停止 | {enabled}/{total} 个任务已启用" if total else "暂无任务")
 
     def refresh_btn(self):
-        if self.gui.scheduler_running:
+        all_enabled = all(s.get("enabled", True) for s in self.cfg["schedules"])
+        if self.gui.scheduler_running and all_enabled:
             self.toggle_btn.config(text="停止定时器", bg="#E74C3C", activebackground="#C0392B")
         else:
-            self.toggle_btn.config(text="启动定时器", bg="#52C41A", activebackground="#389E0D")
+            self.toggle_btn.config(text="一键启动全部", bg="#52C41A", activebackground="#389E0D")
         self._update_status()
 
 
 # ============================================================
-# GenshinAutoToolGUI - 主界面（从 pyc 反汇编重建）
+# GenshinMultiAccountToolGUI - 主界面（从 pyc 反汇编重建）
 # ============================================================
 
-class GenshinAutoToolGUI:
+class GenshinMultiAccountToolGUI:
     """原神多账号自动化一条龙 v5.1 - 主界面"""
 
     def __init__(self, root):
         self.root = root
-        self.root.title("GenshinAutoTool v5.3")
+        self.root.title("原神多账号辅助工具 v5.4")
         self.root.geometry("960x600")
         self.root.minsize(700, 500)
         self.root.configure(bg=COLORS["bg"])
@@ -4151,6 +4227,8 @@ class GenshinAutoToolGUI:
             current_weekday = now.isoweekday()  # 1=周一, 7=周日
 
             for i, schedule in enumerate(cfg["schedules"]):
+                if not schedule.get("enabled", True):
+                    continue
                 if schedule["time"] != current_time:
                     continue
 
@@ -4236,6 +4314,7 @@ class GenshinAutoToolGUI:
                 return
 
         self.running = True
+        self.root.after(200, self._rebuild_tray_menu)
         self.paused = False
         self.stop_event.clear()
         self.pause_event.set()  # 确保开始时不暂停
@@ -4255,7 +4334,7 @@ class GenshinAutoToolGUI:
 
         self._clear_log()
         self._log("=" * 55)
-        self._log(f"GenshinAutoTool v5.3  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self._log(f"GenshinMultiAccountTool v5.4  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         self._log(f"选中: {', '.join(sel)}")
         self._log("=" * 55)
 
@@ -4395,6 +4474,7 @@ class GenshinAutoToolGUI:
 
     def _on_done(self):
         self.running = False
+        self.root.after(200, self._rebuild_tray_menu)
         self.paused = False
         self.root.deiconify()  # 恢复窗口
         self.start_btn.config(state="normal", bg=COLORS["primary"])
@@ -4488,13 +4568,12 @@ class GenshinAutoToolGUI:
                 image = self._tray_default_image()
 
             menu = pystray.Menu(
-                pystray.MenuItem("显示窗口", self._tray_show, default=True),
+                pystray.MenuItem("显示窗口", self._tray_show_window, default=True),
+                pystray.MenuItem("开始任务", self._tray_start),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem("开始", self._tray_start),
-                pystray.MenuItem("暂停", self._tray_pause, checked=lambda item: self.paused),
-                pystray.MenuItem("停止", self._tray_stop),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem("定时器", self._tray_scheduler_toggle, checked=lambda item: self.scheduler_running),
+                pystray.MenuItem("定时器", self._build_scheduler_submenu(),
+                    checked=lambda item: any(s.get("enabled", True)
+                        for s in load_scheduler_config().get("schedules", []))),
                 pystray.MenuItem("取消自动关机", self._tray_cancel_shutdown, checked=lambda item: self._shutdown_pending),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("设置", self._tray_settings),
@@ -4504,6 +4583,7 @@ class GenshinAutoToolGUI:
             global _global_tray
             _global_tray = self.tray
             threading.Thread(target=self.tray.run, daemon=True).start()
+            self.root.after(100, self._poll_pending_action)
         except Exception:
             import traceback
             err = traceback.format_exc()
@@ -4571,8 +4651,10 @@ class GenshinAutoToolGUI:
                     pass
 
     def _on_close(self):
-        """点 X 关闭 → 缩到托盘，无托盘时直接退出"""
-        if self.tray:
+        """点 X 关闭 → 根据设置决定缩到托盘或退出"""
+        cfg = load_config()
+        minimize_on_close = cfg.get("settings", {}).get("minimize_on_close", True)
+        if self.tray and minimize_on_close:
             self.root.withdraw()
         else:
             self._tray_quit_in_main()
@@ -4583,14 +4665,48 @@ class GenshinAutoToolGUI:
         else:
             self.root.iconify()
 
-    def _tray_start(self):
-        self.root.after(0, self._start)
+    def _poll_pending_action(self):
+        """主线程轮询：消费 pystray 线程设置的标志位，安全执行 tkinter 操作"""
+        action = getattr(self, '_pending_action', None)
+        if action == "start":
+            self._pending_action = None
+            self._start()
+            self.root.after(200, self._rebuild_tray_menu)
+        elif action == "pause":
+            self._pending_action = None
+            self._pause_toggle()
+            self.root.after(200, self._rebuild_tray_menu)
+        elif action == "stop":
+            self._pending_action = None
+            self._stop()
+            self.root.after(200, self._rebuild_tray_menu)
+        elif action == "show_window":
+            self._pending_action = None
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+        if getattr(self, '_pending_rebuild', False):
+            self._pending_rebuild = False
+            self._rebuild_tray_menu()
+        self.root.after(100, self._poll_pending_action)
 
-    def _tray_pause(self):
-        self.root.after(0, self._pause_toggle)
+    def _tray_start(self, icon=None, item=None):
+        if self.running:
+            return
+        self._pending_action = "start"
 
-    def _tray_stop(self):
-        self.root.after(0, self._stop)
+    def _tray_pause(self, icon=None, item=None):
+        if not self.running:
+            return
+        self._pending_action = "pause"
+
+    def _tray_stop(self, icon=None, item=None):
+        if not self.running:
+            return
+        self._pending_action = "stop"
+
+    def _tray_show_window(self, icon=None, item=None):
+        self._pending_action = "show_window"
 
     def _tray_scheduler_toggle(self):
         def _toggle():
@@ -4598,11 +4714,19 @@ class GenshinAutoToolGUI:
                 self.scheduler_running = False
                 self._log("定时器已停止")
             else:
+                cfg = load_scheduler_config()
+                if not cfg.get("schedules"):
+                    self._log("[定时器] 没有设置任何定时任务")
+                    return
+                # 一键启用全部任务
+                for s in cfg["schedules"]:
+                    s["enabled"] = True
+                save_scheduler_config(cfg)
                 self.scheduler_running = True
                 self.scheduler_thread = threading.Thread(
                     target=self._scheduler_loop, daemon=True)
                 self.scheduler_thread.start()
-                self._log("定时器已启动")
+                self._log("定时器已启动（一键启用全部任务）")
         self.root.after(0, _toggle)
 
     def _tray_cancel_shutdown(self):
@@ -4610,6 +4734,142 @@ class GenshinAutoToolGUI:
 
     def _tray_settings(self):
         self.root.after(0, self._open_settings)
+
+    # ------------------------------------------------------------------
+    # 托盘 - 定时器子菜单
+    # ------------------------------------------------------------------
+
+    def _format_schedule_desc_short(self, s):
+        """简短描述定时任务（用于托盘子菜单），不超过 20 字"""
+        accts = ", ".join(s.get("accounts", []))
+        time_str = s.get("time", "??:??")
+        stype = s.get("schedule_type", "daily")
+        if stype == "daily":
+            desc = f"每天{time_str}"
+        elif stype == "weekly":
+            wds = s.get("weekdays", [])
+            wd_map = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
+            wd_names = "".join(wd_map.get(i, "") for i in wds)
+            desc = f"每周{wd_names} {time_str}"
+        elif stype == "once":
+            date_str = s.get("date", "")
+            desc = f"{date_str} {time_str}"
+        elif stype == "dates":
+            desc = f"指定日期 {time_str}"
+        else:
+            desc = f"{time_str}"
+        if accts:
+            desc = f"{accts} {desc}"
+        return desc
+
+    def _make_tray_task_toggle(self, schedule):
+        """返回回调：切换单个定时任务的启用状态并重建托盘菜单"""
+        sched_time = schedule["time"]
+        sched_type = schedule.get("schedule_type", "daily")
+        sched_accounts = schedule.get("accounts", [])
+
+        def toggle(icon, item):
+            # 只修改数据，不碰菜单（避免在 pystray 回调中触发 WinError 87）
+            cfg = load_scheduler_config()
+            for s in cfg["schedules"]:
+                if (s["time"] == sched_time and
+                    s.get("schedule_type") == sched_type and
+                    s.get("accounts") == sched_accounts):
+                    s["enabled"] = not s.get("enabled", True)
+                    break
+            save_scheduler_config(cfg)
+            has_enabled = any(s.get("enabled", True) for s in cfg["schedules"])
+            if has_enabled and not self.scheduler_running:
+                self.scheduler_running = True
+                self.scheduler_thread = threading.Thread(
+                    target=self._scheduler_loop, daemon=True)
+                self.scheduler_thread.start()
+                self._log("定时器已启动（托盘启用任务）")
+            elif not has_enabled and self.scheduler_running:
+                self.scheduler_running = False
+                self._log("定时器已停止（所有任务均已停用）")
+            self._pending_rebuild = True
+
+        return toggle
+
+    def _tray_start_all(self, icon, item):
+        """一键启用全部定时任务并启动线程"""
+        cfg = load_scheduler_config()
+        if not cfg.get("schedules"):
+            return
+        for s in cfg["schedules"]:
+            s["enabled"] = True
+        save_scheduler_config(cfg)
+        self.scheduler_running = True
+        self.scheduler_thread = threading.Thread(
+            target=self._scheduler_loop, daemon=True)
+        self.scheduler_thread.start()
+        self._log("定时器已启动（一键启用全部任务）")
+        self._pending_rebuild = True
+
+    def _tray_stop_all(self, icon, item):
+        """全部停用定时任务并停止线程"""
+        cfg = load_scheduler_config()
+        for s in cfg.get("schedules", []):
+            s["enabled"] = False
+        save_scheduler_config(cfg)
+        self.scheduler_running = False
+        self._log("定时器已停止（全部任务已停用）")
+        self._pending_rebuild = True
+
+    def _build_scheduler_submenu(self):
+        """动态构建定时器子菜单（每次调用时根据最新状态生成）"""
+        cfg = load_scheduler_config()
+        schedules = cfg.get("schedules", [])
+        items = []
+        for s in schedules:
+            desc = self._format_schedule_desc_short(s)
+            enabled = s.get("enabled", True)
+            items.append(pystray.MenuItem(
+                desc,
+                self._make_tray_task_toggle(s),
+                checked=lambda item, en=enabled: en
+            ))
+        if items:
+            items.append(pystray.Menu.SEPARATOR)
+        all_enabled = all(s.get("enabled", True) for s in schedules) if schedules else False
+        items.append(pystray.MenuItem(
+            "一键启动全部定时器", self._tray_start_all,
+            checked=lambda item, ae=all_enabled: ae))
+        has_enabled = any(s.get("enabled", True) for s in schedules) if schedules else False
+        if has_enabled:
+            items.append(pystray.MenuItem(
+                "一键关闭全部定时器", self._tray_stop_all))
+        return pystray.Menu(*items) if items else pystray.Menu(
+            pystray.MenuItem("（暂无任务）", None, enabled=False)
+        )
+
+    def _rebuild_tray_menu(self):
+        """重建托盘菜单（仅在主循环空闲时调用，不在 pystray 回调中调用）"""
+        if not self.tray:
+            return
+        items = []
+        # 显示窗口作为默认动作
+        items.append(pystray.MenuItem("显示窗口", self._tray_show_window, default=True))
+        # 开始/暂停/停止 — 根据 self.running 动态显示
+        if self.running:
+            items.append(pystray.MenuItem("暂停任务", self._tray_pause, checked=lambda item: self.paused))
+            items.append(pystray.MenuItem("停止任务", self._tray_stop))
+        else:
+            items.append(pystray.MenuItem("开始任务", self._tray_start))
+        items.extend([
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("定时器", self._build_scheduler_submenu(),
+                checked=lambda item: any(s.get("enabled", True)
+                    for s in load_scheduler_config().get("schedules", []))),
+            pystray.MenuItem("取消自动关机", self._tray_cancel_shutdown,
+                             checked=lambda item: self._shutdown_pending),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("设置", self._tray_settings),
+            pystray.MenuItem("退出", self._tray_quit),
+        ])
+        self.tray.menu = pystray.Menu(*items)
+
 
 # ============================================================
 # 入口
@@ -4659,7 +4919,7 @@ def _gen_icon():
 def main():
     # 单实例检查
     import msvcrt
-    lock_path = os.path.join(tempfile.gettempdir(), "GenshinAutoTool.lock")
+    lock_path = os.path.join(tempfile.gettempdir(), "GenshinMultiAccountTool.lock")
     try:
         _lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_TRUNC)
         msvcrt.locking(_lock_fd, msvcrt.LK_NBLCK, 1)
@@ -4682,7 +4942,7 @@ def main():
     ico = _gen_icon()
     if ico:
         root.iconbitmap(ico)
-    app = GenshinAutoToolGUI(root)
+    app = GenshinMultiAccountToolGUI(root)
 
     # 开机自启动：自动启动定时器
     if "--auto-start-scheduler" in sys.argv:
