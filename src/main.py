@@ -3156,32 +3156,31 @@ class SchedulerDialog(tk.Toplevel):
 
         # 星期（每周模式）
         self.weekday_frame = tk.Frame(add_frame, bg="#FFFFFF")
-        tk.Label(self.weekday_frame, text="选择星期:", bg="#FFFFFF",
+
+        wd_row1 = tk.Frame(self.weekday_frame, bg="#FFFFFF")
+        wd_row1.pack(fill="x")
+        tk.Label(wd_row1, text="选择星期:", bg="#FFFFFF",
                  fg=COLORS["text_light"], font=("Microsoft YaHei", 9)).pack(side="left")
         self.weekday_vars = []
         for i, name in enumerate(self.WEEKDAY_NAMES):
             var = tk.BooleanVar(value=False)
             self.weekday_vars.append(var)
-            tk.Checkbutton(self.weekday_frame, text=name, variable=var,
+            tk.Checkbutton(wd_row1, text=name, variable=var,
                            bg="#FFFFFF", activebackground="#FFFFFF",
                            selectcolor="#FFFFFF", font=("Microsoft YaHei", 9)).pack(
                 side="left", padx=(2, 0))
-        tk.Button(self.weekday_frame, text="全不选", command=self._weekday_none,
-                  bg="#EEF2F7", fg=COLORS["text"], relief="flat",
-                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(
-            side="left", padx=(8, 2))
-        tk.Button(self.weekday_frame, text="全选", command=self._weekday_all,
-                  bg="#EEF2F7", fg=COLORS["text"], relief="flat",
-                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(
-            side="left", padx=(0, 2))
-        tk.Button(self.weekday_frame, text="工作日", command=self._weekday_workday,
-                  bg="#E8F5E9", fg=COLORS["text"], relief="flat",
-                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(
-            side="left", padx=(0, 2))
-        tk.Button(self.weekday_frame, text="周末", command=self._weekday_weekend,
-                  bg="#FFF3E0", fg=COLORS["text"], relief="flat",
-                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(
-            side="left")
+
+        wd_row2 = tk.Frame(self.weekday_frame, bg="#FFFFFF")
+        wd_row2.pack(fill="x", pady=(2, 0))
+        for text, cmd, bg in [("全不选", self._weekday_none, "#EEF2F7"),
+                               ("全选", self._weekday_all, "#EEF2F7"),
+                               ("工作日", self._weekday_workday, "#E8F5E9"),
+                               ("周末", self._weekday_weekend, "#FFF3E0")]:
+            tk.Button(wd_row2, text=text, command=cmd,
+                      bg=bg, fg=COLORS["text"], relief="flat",
+                      font=("Microsoft YaHei", 8), padx=6, cursor="hand2", bd=0).pack(
+                side="left", padx=(0, 4))
+
         self.weekday_frame.pack(fill="x", padx=10, pady=(2, 4))
         self.weekday_frame.pack_forget()
 
