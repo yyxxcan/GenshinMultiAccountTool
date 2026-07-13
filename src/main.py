@@ -2943,8 +2943,10 @@ class CalendarDialog(tk.Toplevel):
 
 class SchedulerDialog(tk.Toplevel):
     WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
-    QUICK_TIMES = [("早8点", "08", "00"), ("午12点", "12", "00"),
-                   ("晚8点", "20", "00"), ("凌晨4点", "04", "00")]
+    QUICK_TIMES = [("早6点", "06", "00"), ("早8点", "08", "00"), ("早10点", "10", "00"),
+                   ("午12点", "12", "00"), ("下2点", "14", "00"), ("下4点", "16", "00"),
+                   ("晚6点", "18", "00"), ("晚8点", "20", "00"), ("晚10点", "22", "00"),
+                   ("凌晨4", "04", "00")]
 
     def __init__(self, parent, gui):
         super().__init__(parent)
@@ -3100,19 +3102,37 @@ class SchedulerDialog(tk.Toplevel):
         self.hour_var.trace_add("write", self._validate_hour)
         self.minute_var.trace_add("write", self._validate_minute)
 
-        # 分钟微调按钮行
+        # 时间微调行
         mrow = tk.Frame(add_frame, bg="#FFFFFF")
         mrow.pack(fill="x", padx=10, pady=(4, 6))
-        tk.Button(mrow, text="-5分", command=lambda: self._adj_minutes(-5),
+
+        # 小时微调
+        tk.Button(mrow, text="◀时", command=lambda: self._adj_hour(-1),
                   bg="#EEF2F7", fg=COLORS["text"], relief="flat",
-                  font=("Microsoft YaHei", 8), padx=6, cursor="hand2", bd=0).pack(side="left", padx=(0, 3))
-        tk.Button(mrow, text="+5分", command=lambda: self._adj_minutes(5),
+                  font=("Microsoft YaHei", 7), padx=4, cursor="hand2", bd=0).pack(side="left", padx=(0, 1))
+        tk.Button(mrow, text="时▶", command=lambda: self._adj_hour(1),
                   bg="#EEF2F7", fg=COLORS["text"], relief="flat",
-                  font=("Microsoft YaHei", 8), padx=6, cursor="hand2", bd=0).pack(side="left", padx=(0, 12))
-        for m in (15, 30, 45):
-            tk.Button(mrow, text=f"{m}分", command=lambda mm=m: self._set_minute(mm),
-                      bg="#E8F5E9", fg=COLORS["text"], relief="flat",
-                      font=("Microsoft YaHei", 8), padx=6, cursor="hand2", bd=0).pack(side="left", padx=(0, 3))
+                  font=("Microsoft YaHei", 7), padx=4, cursor="hand2", bd=0).pack(side="left", padx=(0, 10))
+
+        # 分钟微调
+        tk.Button(mrow, text="-5", command=lambda: self._adj_minutes(-5),
+                  bg="#EEF2F7", fg=COLORS["text"], relief="flat",
+                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(side="left", padx=(0, 1))
+        tk.Button(mrow, text="-1", command=lambda: self._adj_minutes(-1),
+                  bg="#EEF2F7", fg=COLORS["text"], relief="flat",
+                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(side="left", padx=(0, 1))
+        tk.Button(mrow, text="+1", command=lambda: self._adj_minutes(1),
+                  bg="#EEF2F7", fg=COLORS["text"], relief="flat",
+                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(side="left", padx=(0, 1))
+        tk.Button(mrow, text="+5", command=lambda: self._adj_minutes(5),
+                  bg="#EEF2F7", fg=COLORS["text"], relief="flat",
+                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(side="left", padx=(0, 10))
+
+        # 分钟跳转
+        for m, color in [(0, "#EEF2F7"), (15, "#E8F5E9"), (30, "#E8F5E9"), (45, "#E8F5E9")]:
+            tk.Button(mrow, text=f":{m:02d}", command=lambda mm=m: self._set_minute(mm),
+                      bg=color, fg=COLORS["text"], relief="flat",
+                      font=("Microsoft YaHei", 8), padx=5, cursor="hand2", bd=0).pack(side="left", padx=(0, 3))
 
         # 日期（一次性模式）
         self.date_frame = tk.Frame(add_frame, bg="#FFFFFF")
@@ -3372,6 +3392,13 @@ class SchedulerDialog(tk.Toplevel):
             self._trace_suppress = False
         else:
             self._prev_minute = val
+
+    def _adj_hour(self, delta):
+        h = int(self.hour_var.get() or 8)
+        m = int(self.minute_var.get() or 0)
+        total = (h + delta) * 60 + m
+        total %= 24 * 60
+        self._set_time(f"{total // 60:02d}", f"{total % 60:02d}")
 
     def _adj_minutes(self, delta):
         h = int(self.hour_var.get() or 8)
