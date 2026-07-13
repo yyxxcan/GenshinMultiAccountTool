@@ -3651,7 +3651,7 @@ class SchedulerDialog(tk.Toplevel):
         self.after(50, self._update_acct_scrollbar)
 
     def _format_schedule_desc(self, s):
-        accts = ", ".join(s.get("accounts", []))
+        accts = "    ".join(f"{i+1}. {name}" for i, name in enumerate(s.get("accounts", [])))
         grp = s.get("scheduler_groups", "")
         stype = s.get("schedule_type", "daily")
         time_str = s.get("time", "??:??")
