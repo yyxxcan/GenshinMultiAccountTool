@@ -3240,38 +3240,33 @@ class SchedulerDialog(tk.Toplevel):
 
         self._acct_vars = {}
         accounts = self.gui.cfg.get("accounts", [])
+        self._acct_rows = []  # 拖拽排序用
         if accounts:
             for i, acc in enumerate(accounts):
                 var = tk.BooleanVar(value=False)
                 self._acct_vars[acc["name"]] = var
 
-                row = tk.Frame(self.acct_inner, bg="#FFFFFF")
-                row.pack(fill="x", padx=2, pady=1)
+                row = tk.Frame(self.acct_inner, bg="#FFFFFF", cursor="hand2")
+                row.pack(fill="x", padx=4, pady=(1, 0))
 
-                # 上移按钮（首项占位）
-                if i > 0:
-                    tk.Button(row, text="▲", command=lambda idx=i: self._move_account(idx, -1),
-                              bg="#EEF2F7", fg=COLORS["text_light"], relief="flat",
-                              font=("Microsoft YaHei", 6), padx=1, cursor="hand2", bd=0,
-                              width=2).pack(side="left", padx=(0, 0))
-                else:
-                    tk.Label(row, text="", bg="#FFFFFF", width=2,
-                             font=("Microsoft YaHei", 6)).pack(side="left")
+                cb = tk.Checkbutton(row, text=acc["name"], variable=var,
+                                    bg="#FFFFFF", activebackground="#FFFFFF",
+                                    font=("Microsoft YaHei", 9))
+                cb.pack(side="left", padx=(4, 0))
 
-                # 下移按钮（末项占位）
-                if i < len(accounts) - 1:
-                    tk.Button(row, text="▼", command=lambda idx=i: self._move_account(idx, 1),
-                              bg="#EEF2F7", fg=COLORS["text_light"], relief="flat",
-                              font=("Microsoft YaHei", 6), padx=1, cursor="hand2", bd=0,
-                              width=2).pack(side="left")
-                else:
-                    tk.Label(row, text="", bg="#FFFFFF", width=2,
-                             font=("Microsoft YaHei", 6)).pack(side="left")
+                # 整行可拖拽
+                for w in (row, cb):
+                    w.bind("<Button-1>", lambda e, idx=i: self._acct_drag_start(e, idx))
 
-                tk.Checkbutton(row, text=acc["name"], variable=var,
-                               bg="#FFFFFF", activebackground="#FFFFFF",
-                               font=("Microsoft YaHei", 9)).pack(
-                    side="left", padx=(2, 0))
+                self._acct_rows.append(row)
+
+                # 行间分隔线
+                tk.Frame(self.acct_inner, bg="#E1E8F0", height=1).pack(
+                    fill="x", padx=10, pady=1)
+
+            # 拖拽指示线（初始隐藏）
+            self._acct_drag_line = tk.Frame(self.acct_inner, bg=COLORS["primary"], height=2)
+            self._acct_drag_data = {"source_idx": -1, "dragging": False}
         else:
             tk.Label(self.acct_inner, text="（暂无账号）", bg="#FFFFFF",
                      fg=COLORS["text_light"], font=("Microsoft YaHei", 9)).pack(anchor="w", padx=4)
@@ -3542,19 +3537,83 @@ class SchedulerDialog(tk.Toplevel):
         for v in self._acct_vars.values():
             v.set(False)
 
-    def _move_account(self, idx, direction):
-        """上移(-1)或下移(+1)账号，同步更新全局配置"""
-        accounts = self.gui.cfg["accounts"]
-        new_idx = idx + direction
-        if 0 <= new_idx < len(accounts):
-            accounts[idx], accounts[new_idx] = accounts[new_idx], accounts[idx]
-            save_config(self.gui.cfg)
-            self._rebuild_acct_list()
+    def _acct_drag_start(self, event, source_idx):
+        """拖拽开始"""
+        self._acct_drag_data["source_idx"] = source_idx
+        self._acct_drag_data["dragging"] = False
+        self._acct_drag_data["start_y"] = event.y_root
+        self.bind_all("<B1-Motion>", self._acct_drag_motion)
+        self.bind_all("<ButtonRelease-1>", self._acct_drag_end)
+
+    def _acct_drag_motion(self, event):
+        """拖拽移动：显示蓝色指示线"""
+        if not self._acct_drag_data.get("dragging"):
+            dy = event.y_root - self._acct_drag_data.get("start_y", 0)
+            if abs(dy) < 5:
+                return
+            self._acct_drag_data["dragging"] = True
+
+        y_in_inner = event.y_root - self.acct_inner.winfo_rooty()
+        y_in_inner += self.acct_canvas.canvasy(0)  # 补偿滚动偏移
+
+        target = self._acct_drag_data["source_idx"]
+        for i, row in enumerate(self._acct_rows):
+            if not row.winfo_exists():
+                continue
+            mid_y = row.winfo_y() + row.winfo_height() / 2
+            if y_in_inner < mid_y:
+                target = i
+                break
+        else:
+            target = len(self._acct_rows)
+
+        if target != self._acct_drag_data.get("target_idx"):
+            self._acct_drag_data["target_idx"] = target
+            self._show_acct_drag_line(target)
+
+    def _show_acct_drag_line(self, target_idx):
+        """在目标位置显示蓝色指示线"""
+        self._acct_drag_line.place_forget()
+        if target_idx >= len(self._acct_rows):
+            last_row = self._acct_rows[-1]
+            if last_row.winfo_exists():
+                y = last_row.winfo_y() + last_row.winfo_height()
+        else:
+            row = self._acct_rows[target_idx]
+            if row.winfo_exists():
+                y = row.winfo_y()
+        self._acct_drag_line.place(x=0, y=y, relwidth=1.0)
+        self._acct_drag_line.lift()
+
+    def _acct_drag_end(self, event):
+        """拖拽结束：执行排序并刷新"""
+        self.unbind_all("<B1-Motion>")
+        self.unbind_all("<ButtonRelease-1>")
+        self._acct_drag_line.place_forget()
+        source = self._acct_drag_data.get("source_idx", -1)
+        target = self._acct_drag_data.get("target_idx", -1)
+        self._acct_drag_data["source_idx"] = -1
+        self._acct_drag_data["dragging"] = False
+        self._acct_drag_data.pop("target_idx", None)
+
+        if source < 0 or target < 0 or source == target:
+            return
+
+        accounts = self.gui.cfg.get("accounts", [])
+        if source >= len(accounts):
+            return
+        acc = accounts.pop(source)
+        if target > source:
+            target -= 1
+        accounts.insert(target, acc)
+        save_config(self.gui.cfg)
+        self._rebuild_acct_list()
 
     def _rebuild_acct_list(self):
-        """重建账号列表 UI"""
+        """重建账号列表 UI（保留勾选状态）"""
         for w in self.acct_inner.winfo_children():
             w.destroy()
+        self._acct_rows = []
         accounts = self.gui.cfg.get("accounts", [])
         if accounts:
             for i, acc in enumerate(accounts):
@@ -3564,31 +3623,24 @@ class SchedulerDialog(tk.Toplevel):
                     var = tk.BooleanVar(value=False)
                     self._acct_vars[name] = var
 
-                row = tk.Frame(self.acct_inner, bg="#FFFFFF")
-                row.pack(fill="x", padx=2, pady=1)
+                row = tk.Frame(self.acct_inner, bg="#FFFFFF", cursor="hand2")
+                row.pack(fill="x", padx=4, pady=(1, 0))
 
-                if i > 0:
-                    tk.Button(row, text="▲", command=lambda idx=i: self._move_account(idx, -1),
-                              bg="#EEF2F7", fg=COLORS["text_light"], relief="flat",
-                              font=("Microsoft YaHei", 6), padx=1, cursor="hand2", bd=0,
-                              width=2).pack(side="left", padx=(0, 0))
-                else:
-                    tk.Label(row, text="", bg="#FFFFFF", width=2,
-                             font=("Microsoft YaHei", 6)).pack(side="left")
+                cb = tk.Checkbutton(row, text=name, variable=var,
+                                    bg="#FFFFFF", activebackground="#FFFFFF",
+                                    font=("Microsoft YaHei", 9))
+                cb.pack(side="left", padx=(4, 0))
 
-                if i < len(accounts) - 1:
-                    tk.Button(row, text="▼", command=lambda idx=i: self._move_account(idx, 1),
-                              bg="#EEF2F7", fg=COLORS["text_light"], relief="flat",
-                              font=("Microsoft YaHei", 6), padx=1, cursor="hand2", bd=0,
-                              width=2).pack(side="left")
-                else:
-                    tk.Label(row, text="", bg="#FFFFFF", width=2,
-                             font=("Microsoft YaHei", 6)).pack(side="left")
+                for w in (row, cb):
+                    w.bind("<Button-1>", lambda e, idx=i: self._acct_drag_start(e, idx))
 
-                tk.Checkbutton(row, text=name, variable=var,
-                               bg="#FFFFFF", activebackground="#FFFFFF",
-                               font=("Microsoft YaHei", 9)).pack(
-                    side="left", padx=(2, 0))
+                self._acct_rows.append(row)
+
+                tk.Frame(self.acct_inner, bg="#E1E8F0", height=1).pack(
+                    fill="x", padx=10, pady=1)
+
+            self._acct_drag_line = tk.Frame(self.acct_inner, bg=COLORS["primary"], height=2)
+            self._acct_drag_data = {"source_idx": -1, "dragging": False}
         else:
             tk.Label(self.acct_inner, text="（暂无账号）", bg="#FFFFFF",
                      fg=COLORS["text_light"], font=("Microsoft YaHei", 9)).pack(anchor="w", padx=4)
