@@ -3609,6 +3609,12 @@ class SchedulerDialog(tk.Toplevel):
                             relief="flat", font=("Microsoft YaHei", 9),
                             width=5, cursor="hand2", bd=0)
             btn.grid(row=0, column=2, padx=(0, 2), sticky="ne")
+
+            # 任务间分隔线（最后一项不加）
+            if i < len(self.cfg["schedules"]) - 1:
+                tk.Frame(self.task_inner, height=1, bg="#E1E8F0").pack(
+                    fill="x", padx=10, pady=2)
+
         self.after(50, self._update_task_scrollbar)
         self.after(50, self._update_main_scrollbar)
 
