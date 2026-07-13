@@ -3044,6 +3044,8 @@ class SchedulerDialog(tk.Toplevel):
                     scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
         content.bind("<MouseWheel>", _scroll_mousewheel)
+        scroll_canvas.bind("<MouseWheel>", _scroll_mousewheel)
+        self.bind("<MouseWheel>", _scroll_mousewheel)  # 窗口级兜底
 
         # --- 添加任务区域 ---
         add_frame = tk.Frame(content, bg="#FFFFFF", relief="flat", bd=1)
