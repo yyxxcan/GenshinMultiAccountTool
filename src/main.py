@@ -3115,7 +3115,17 @@ class SchedulerDialog(tk.Toplevel):
                   font=("Microsoft YaHei", 8), padx=3, cursor="hand2", bd=0,
                   width=2).pack(side="left")
         tk.Label(t_row, text="分", bg="#FFFFFF", fg=COLORS["text"],
-                 font=("Microsoft YaHei", 9)).pack(side="left", padx=(2, 8))
+                 font=("Microsoft YaHei", 9)).pack(side="left", padx=(2, 4))
+
+        # 分钟快速加减
+        tk.Button(t_row, text="-5", command=lambda: self._adj_minutes(-5),
+                  bg="#FDE8E8", fg=COLORS["text"], relief="flat",
+                  font=("Microsoft YaHei", 7), padx=2, cursor="hand2", bd=0,
+                  width=2).pack(side="left", padx=(0, 1))
+        tk.Button(t_row, text="+5", command=lambda: self._adj_minutes(5),
+                  bg="#E8F5E9", fg=COLORS["text"], relief="flat",
+                  font=("Microsoft YaHei", 7), padx=2, cursor="hand2", bd=0,
+                  width=2).pack(side="left", padx=(0, 8))
 
         # 分钟跳转
         for m, name in [(0, "整点"), (15, "一刻"), (30, "半点"), (45, "三刻")]:
@@ -3152,8 +3162,18 @@ class SchedulerDialog(tk.Toplevel):
         for i, name in enumerate(self.WEEKDAY_NAMES):
             var = tk.BooleanVar(value=False)
             self.weekday_vars.append(var)
-            tk.Checkbutton(self.weekday_frame, text=name, variable=var).pack(
+            tk.Checkbutton(self.weekday_frame, text=name, variable=var,
+                           bg="#FFFFFF", activebackground="#FFFFFF",
+                           selectcolor="#FFFFFF", font=("Microsoft YaHei", 9)).pack(
                 side="left", padx=(2, 0))
+        tk.Button(self.weekday_frame, text="全不选", command=self._weekday_none,
+                  bg="#EEF2F7", fg=COLORS["text"], relief="flat",
+                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(
+            side="left", padx=(8, 2))
+        tk.Button(self.weekday_frame, text="全选", command=self._weekday_all,
+                  bg="#EEF2F7", fg=COLORS["text"], relief="flat",
+                  font=("Microsoft YaHei", 8), padx=4, cursor="hand2", bd=0).pack(
+            side="left")
         self.weekday_frame.pack(fill="x", padx=10, pady=(2, 4))
         self.weekday_frame.pack_forget()
 
@@ -3178,6 +3198,7 @@ class SchedulerDialog(tk.Toplevel):
         # 账号选择（可滚动区域）
         acct_label_row = tk.Frame(add_frame, bg="#FFFFFF")
         acct_label_row.pack(fill="x", padx=10, pady=(2, 0))
+        self._mode_anchor = acct_label_row  # 模式相关控件锚点，保证 pack 位置
         tk.Label(acct_label_row, text="账号:", bg="#FFFFFF", fg=COLORS["text_light"],
                  font=("Microsoft YaHei", 9)).pack(anchor="w")
 
@@ -3407,20 +3428,31 @@ class SchedulerDialog(tk.Toplevel):
         h = self.hour_var.get() or "08"
         self._set_time(h, f"{m:02d}")
 
+    def _weekday_all(self):
+        for v in self.weekday_vars:
+            v.set(True)
+
+    def _weekday_none(self):
+        for v in self.weekday_vars:
+            v.set(False)
+
     def _on_mode_change(self):
         mode = self.mode_var.get()
         if mode == "once":
-            self.date_frame.pack(fill="x", padx=10, pady=(2, 4))
+            self.date_frame.pack(fill="x", padx=10, pady=(2, 4),
+                                 before=self._mode_anchor)
         else:
             self.date_frame.pack_forget()
 
         if mode == "weekly":
-            self.weekday_frame.pack(fill="x", padx=10, pady=(2, 4))
+            self.weekday_frame.pack(fill="x", padx=10, pady=(2, 4),
+                                    before=self._mode_anchor)
         else:
             self.weekday_frame.pack_forget()
 
         if mode == "dates":
-            self.dates_frame.pack(fill="x", padx=10, pady=(2, 4))
+            self.dates_frame.pack(fill="x", padx=10, pady=(2, 4),
+                                  before=self._mode_anchor)
         else:
             self.dates_frame.pack_forget()
 
