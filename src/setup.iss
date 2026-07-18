@@ -3,7 +3,7 @@
 ; 安装包结构: exe + tesseract-ocr + 配置文件（其他全部嵌入 exe）
 
 #define MyAppName "GenshinMultiAccountTool"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #define MyAppPublisher "GenshinAutoTool"
 #define MyAppURL ""
 #define MyAppExeName "GenshinMultiAccountTool.exe"

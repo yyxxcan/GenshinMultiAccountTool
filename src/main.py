@@ -2454,19 +2454,16 @@ class WorkerThread(threading.Thread):
             # 手动停止：由「手动停止时关闭所有进程」开关控制
             if settings.get("stop_closes_all_processes", True):
                 self.log("手动停止：关闭所有进程...")
-                if find_proc(genshin_proc_name):
-                    kill_proc(genshin_proc_name, graceful=False)
-                    time.sleep(2)
-                if find_proc("BetterGI.exe"):
-                    kill_proc("BetterGI.exe", graceful=False)
-                    time.sleep(2)
+                kill_proc(genshin_proc_name, graceful=False)
+                time.sleep(2)
+                kill_proc("BetterGI.exe", graceful=False)
+                time.sleep(2)
                 for pn in ["Snap.Hutao.Remastered.exe",
                            "Snap.Hutao.Remastered.FullTrust.exe"]:
                     kill_proc(pn, graceful=False)
                     time.sleep(1)
-                if find_proc("TeyvatGuide.exe"):
-                    kill_proc("TeyvatGuide.exe", graceful=False)
-                    time.sleep(1)
+                kill_proc("TeyvatGuide.exe", graceful=False)
+                time.sleep(1)
             else:
                 self.log("手动停止：设置要求保留所有进程，不关闭")
         else:
@@ -6197,40 +6194,22 @@ def _run_checkin(log_func=None, stop_event=None, pause_event=None):
 
         # ---- Step 1: 导航到「实用脚本」 ----
         log("[签到] 导航到「实用脚本」页面...")
+        _cdp_evaluate(ws, 'window.location.href = "/user/scripts"', timeout=10)
 
-        nav_js = """(function() {
-    var link = document.querySelector('a[href="/user/scripts"]');
-    if (link) {
-        link.click();
-        return 'clicked';
-    }
-    return 'not_found';
-})()"""
-
-        nav_result = _cdp_evaluate(ws, nav_js, timeout=20)
-        log(f"[签到] 点击「实用脚本」结果: {nav_result}")
-
-        if nav_result != "clicked":
-            log("[签到] [!] 未找到「实用脚本」链接，TeyvatGuide 可能尚未完全加载")
-            ws.close()
-            return False
-
-        # 等待页面切换
-        log("[签到] 等待页面切换...")
-        for _ in range(20):  # 最多等 10 秒
+        # 等待 SPA 路由切换 + 页面渲染
+        for _ in range(15):  # 最多等 30 秒
             if _should_stop():
                 ws.close()
                 return False
-            _sleep(0.5)
+            _sleep(2)
             url_val = _cdp_evaluate(ws, "window.location.href", timeout=5)
             if url_val and "/user/scripts" in str(url_val):
-                log(f"[签到] 页面已切换到: {url_val}")
+                log(f"[签到] 已到达: {url_val}")
                 break
         else:
-            # 兜底：直接设置 location
-            log("[签到] 页面未自动切换，使用直接导航兜底...")
-            _cdp_evaluate(ws, 'window.location.href = "/user/scripts"', timeout=10)
-            _sleep(3)
+            log("[签到] [!] 导航到实用脚本页面超时")
+            ws.close()
+            return False
 
         if _should_stop():
             ws.close()
@@ -8426,27 +8405,27 @@ class GenshinMultiAccountToolGUI:
     # ------------------------------------------------------------------
 
     def _poll_log(self):
-        try:
-            log_lines = []
-            for _ in range(50):
+        log_lines = []
+        for _ in range(50):
+            try:
                 msg = self.log_queue.get_nowait()
-                if msg == "__DONE__":
-                    self._on_done()
-                elif msg.startswith("__PROGRESS__"):
-                    val = int(msg.split("__")[2])
-                    self.progress["value"] = val
-                    self.progress_label.config(
-                        text=f"{val}/{self.progress['maximum']}")
-                elif msg.startswith("__STATUS__"):
-                    self.status.config(text=msg.split("__", 2)[2])
-                else:
-                    ts = datetime.now().strftime("%H:%M:%S")
-                    log_lines.append(f"[{ts}] {msg}\n")
-            if log_lines:
-                self._log_batch("".join(log_lines))
-            self._log_poll_interval = 100  # 有消息时恢复快速轮询
-        except queue.Empty:
-            self._log_poll_interval = 500  # 空闲时降频
+            except queue.Empty:
+                break
+            if msg == "__DONE__":
+                self._on_done()
+            elif msg.startswith("__PROGRESS__"):
+                val = int(msg.split("__")[2])
+                self.progress["value"] = val
+                self.progress_label.config(
+                    text=f"{val}/{self.progress['maximum']}")
+            elif msg.startswith("__STATUS__"):
+                self.status.config(text=msg.split("__", 2)[2])
+            else:
+                ts = datetime.now().strftime("%H:%M:%S")
+                log_lines.append(f"[{ts}] {msg}\n")
+        if log_lines:
+            self._log_batch("".join(log_lines))
+        self._log_poll_interval = 100 if log_lines else 500
         self.root.after(self._log_poll_interval, self._poll_log)
 
     def _log(self, msg):
